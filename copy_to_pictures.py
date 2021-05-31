@@ -24,10 +24,12 @@ from datetime import datetime
 import os
 import shutil
 
-import exifread
+import exifread  # type: ignore
+from progressbar import ProgressBar  # type: ignore
 
 
 def main():
+    """Main."""
     parser = ArgumentParser(
         description="Copies pictures from a directory to a photos directory.",
         epilog=(
@@ -67,13 +69,21 @@ def main():
         target_directory = target_directory + "/"
 
     with os.scandir(source_directory) as image_directory:
-        image_paths = [image for image in image_directory]
+        image_paths = [image for image in image_directory if image.is_file()]
 
-    for image_path in image_paths:
-        if image_path.is_dir():
-            continue
-        with open(image_path, "rb") as image:
-            exif_tags = exifread.process_file(image)
+    with ProgressBar(
+        max_value=len(image_paths), redirect_stdout=True
+    ) as progress_bar:
+        progress = 0
+        for image_path in image_paths:
+            try:
+                with open(image_path, "rb") as image:
+                    exif_tags = exifread.process_file(image)
+            except OSError:
+                print(f"ERROR! Couldn't open {image_path}, skipping.")
+                progress += 1
+                progress_bar.update(progress)
+                continue
             image_datetime = exif_tags.get("EXIF DateTimeOriginal")
             if image_datetime is not None:
                 new_path = datetime.strftime(
@@ -89,6 +99,8 @@ def main():
                 os.makedirs(new_path)
 
             shutil.copy2(image_path, new_path)
+            progress += 1
+            progress_bar.update(progress)
 
 
 if __name__ == "__main__":
